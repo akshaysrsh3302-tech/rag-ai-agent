@@ -18,7 +18,6 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 
 app = FastAPI(title="RAG Document QA API")
 
-# Get Groq API Key from Render Environment Variable
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY environment variable is not set!")
@@ -46,7 +45,6 @@ async def process_pdf(file: UploadFile = File(...)):
         loader = PyPDFLoader(file_path)
         raw_documents = loader.load()
 
-        # Add metadata summary
         metadata_summary = "Document Metadata:\n"
         if raw_documents:
             meta = raw_documents[0].metadata
