@@ -1,0 +1,18 @@
+# Ignore environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Temporary files
+*.pdf
+chroma_db/
+.DS_Store
