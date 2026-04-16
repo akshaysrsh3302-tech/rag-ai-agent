@@ -1,12 +1,11 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.12
-langchain==0.3.0
-langchain-groq==0.2.0
-langchain-chroma==0.1.4
-langchain-huggingface==0.1.0
-langchain-community==0.3.0
-langchain-classic==0.0.1.post1   # for the classic chains you are using
-pypdf==5.0.0
-chromadb==0.5.11
-huggingface-hub==0.25.0
+fastapi
+uvicorn[standard]
+python-multipart
+langchain
+langchain-groq
+langchain-chroma
+langchain-huggingface
+langchain-community
+pypdf
+chromadb
+huggingface-hub
