@@ -39,5 +39,5 @@ Built with **FastAPI**, **LangChain**, **Groq (Llama-3.1)**, and **ChromaDB**.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/rag-ai-agent.git
+git clone https://github.com/akshaysrsh3302-tech/rag-ai-agent.git
 cd rag-ai-agent
