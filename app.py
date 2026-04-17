@@ -23,6 +23,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 # Load environment variables from .env file
 load_dotenv()
 
+# Create FastAPI app
 app = FastAPI(title="RAG Document QA API")
 
 # ====================== CONFIG FROM .env ======================
@@ -36,24 +37,23 @@ if NGROK_AUTHTOKEN:
     ngrok.set_auth_token(NGROK_AUTHTOKEN)
     print("✅ ngrok auth token loaded successfully")
 else:
-    print("⚠️  NGROK_AUTHTOKEN not found in .env. ngrok may not work.")
+    print("⚠️ NGROK_AUTHTOKEN not found in .env. ngrok may not work.")
 
 # Initialize LLM and Embeddings
 llm = ChatGroq(
-    groq_api_key=GROQ_API_KEY, 
-    model_name="llama-3.1-8b-instant", 
+    groq_api_key=GROQ_API_KEY,
+    model_name="llama-3.1-8b-instant",
     temperature=0.3
 )
-
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 # Store active sessions: session_id → {chain, vectorstore, history}
 sessions = {}
 
+# Request model for chat endpoint
 class ChatRequest(BaseModel):
     session_id: str
     question: str
-
 
 @app.get("/")
 async def home():
@@ -63,51 +63,48 @@ async def home():
         "instruction": "First upload PDF using /process-pdf, then use /chat"
     }
 
-
 @app.post("/process-pdf")
 async def process_pdf(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-
+    
     # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         content = await file.read()
         tmp.write(content)
         file_path = tmp.name
-
+    
     try:
-        # Load and split PDF
+        # Load and split PDF into chunks
         loader = PyPDFLoader(file_path)
         raw_documents = loader.load()
-
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=500)
         splits = text_splitter.split_documents(raw_documents)
-
-        # Create vector store
+        
+        # Create vector store for RAG
         vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
         retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
-
-        # Prompts
+        
+        # Prompts for contextualization and QA
         contextualize_q_prompt = ChatPromptTemplate.from_messages([
             ("system", "Given the chat history and the latest user question, formulate a standalone question."),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}"),
         ])
-
+        
         qa_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a helpful assistant. Answer only based on the provided context.\n\n{context}"),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}"),
         ])
-
-        # Create chains
+        
+        # Create RAG chains
         history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
         question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
         rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
-        # Add memory
+        
+        # Add conversation memory
         session_history = ChatMessageHistory()
-
         conversational_rag_chain = RunnableWithMessageHistory(
             rag_chain,
             lambda session_id: session_history,
@@ -115,22 +112,21 @@ async def process_pdf(file: UploadFile = File(...)):
             history_messages_key="chat_history",
             output_messages_key="answer",
         )
-
-        # Save session
+        
+        # Save session data
         session_id = str(uuid.uuid4())
         sessions[session_id] = {
             "chain": conversational_rag_chain,
             "vectorstore": vectorstore,
             "history": session_history
         }
-
+        
         return {
             "session_id": session_id,
             "message": "PDF processed successfully",
             "num_chunks": len(splits),
             "filename": file.filename
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
     finally:
@@ -138,39 +134,38 @@ async def process_pdf(file: UploadFile = File(...)):
         if os.path.exists(file_path):
             os.unlink(file_path)
 
-
 @app.post("/chat")
 async def chat(request: ChatRequest):
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found. Please upload a PDF first.")
-
+    
     chain = sessions[request.session_id]["chain"]
-
+    
+    # Run RAG chain with question
     response = chain.invoke(
         {"input": request.question},
         config={"configurable": {"session_id": request.session_id}}
     )
-
-    # Extract sources
+    
+    # Extract sources for answer
     sources = []
     for i, doc in enumerate(response.get("context", []), 1):
         content = doc.page_content.strip()
         if len(content) > 600:
             content = content[:600] + "..."
         sources.append({"source_id": i, "content": content})
-
+    
     return {
         "answer": response.get("answer", "Sorry, I could not generate an answer."),
         "sources": sources,
         "num_sources": len(sources)
     }
 
-
 # ====================== Run the Server ======================
 if __name__ == "__main__":
     PORT = 8000
-
-    # Start ngrok tunnel
+    
+    # Start ngrok tunnel (for public URL)
     try:
         ngrok_tunnel = ngrok.connect(PORT)
         print("\n🚀 **Your Public API URL:**", ngrok_tunnel.public_url)
@@ -179,6 +174,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"⚠️ Could not start ngrok: {e}")
         print("Make sure NGROK_AUTHTOKEN is set in .env file\n")
-
+    
     print("✅ Server is starting...\n")
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
